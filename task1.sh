@@ -1,71 +1,113 @@
 #!/bin/bash
 
-# Check if an argument is provided
+# Check if an argument is provided for the input file
 if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 path_to_accounts.csv"
-    exit 1
+  echo "Usage: $0 path/to/accounts.csv"
+  exit 1
 fi
 
 # Input and output file paths
 input_file="$1"
 output_file="accounts_new.csv"
+temp_file="temp_emails.txt"
 
 # Header for the new CSV file
 echo "id,location_id,name,title,email,department" > "$output_file"
 
-# Temporary file to track emails
-temp_file=$(mktemp)
+# Clear the temporary file
+> "$temp_file"
 
-# Function to handle quoted fields properly
-handle_quotes() {
-    local field="$1"
-    echo "$field" | sed 's/^"\(.*\)"$/\1/' | sed 's/""/"/g'
+# Initialize an associative array to track generated emails
+declare -A email_map
+
+awk -F, '
+BEGIN {
+    OFS=","  # Output field separator
+    FPAT="([^,]+)|(\"[^\"]+\")"  # Field pattern to handle quoted fields
 }
 
-# Read the input file and process each line
-while IFS= read -r line; do
-    # Skip the header line
-    if [[ "$line" != id* ]]; then
-        # Split fields, handling quotes and commas correctly
-        id=$(echo "$line" | awk -F',' '{print $1}')
-        location_id=$(echo "$line" | awk -F',' '{print $2}')
-        name=$(handle_quotes "$(echo "$line" | awk -F',' '{print $3}')")
-        title=$(handle_quotes "$(echo "$line" | awk -F',' '{print $4}')")
-        email=$(handle_quotes "$(echo "$line" | awk -F',' '{print $5}')")
-        department=$(handle_quotes "$(echo "$line" | awk -F',' '{print $6}')")
+function format_name(name) {
+    gsub(/^"|"$/, "", name)  # Remove leading/trailing quotes
+    gsub(/^ +| +$/, "", name)  # Remove leading/trailing spaces
+    split(name, words, " ")  # Split name into words
+    formatted = ""
+    for (i=1; i<=length(words); i++) {
+        word = words[i]
+        gsub(/^.|-./, toupper(substr(word,1,1)), word)  # Capitalize first letter of word
+        formatted = formatted (i>1?" ":"") word  # Join formatted words with spaces
+    }
+    return formatted
+}
 
-        # Format the name (capitalize first letter of each word)
-        formatted_name=$(echo "$name" | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
+function generate_email(name, location_id) {
+    split(name, parts, " ")
+    first = tolower(substr(parts[1], 1, 1))
+    last = tolower(parts[length(parts)])
+    gsub(/-/, "", last)  # Remove hyphens from last name
 
-        # Generate email
-        first_letter=$(echo "$formatted_name" | cut -d' ' -f1 | cut -c1 | tr '[:upper:]' '[:lower:]')
-        last_name=$(echo "$formatted_name" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')
-        email="${first_letter}${last_name}@abc.com"
+    new_email = first last "@abc.com"
 
-        # If email already exists, append the location_id to it
-        if grep -q "$email" "$temp_file"; then
-            email="${first_letter}${last_name}${location_id}@abc.com"
-        fi
+    # If the email is already in use, add location_id
+    while (new_email in email_map) {
+        new_email = first last location_id "@abc.com"
+        location_id++
+    }
 
-        # Add the email to the temporary file for tracking
-        echo "$email" >> "$temp_file"
+    email_map[new_email] = 1
+    return new_email
+}
 
-        # Preserve the title with quotes if it contains commas
-        if [[ "$title" =~ "," ]]; then
-            title="\"${title}\""
-        fi
+NR == 1 {next}  # Skip header row
 
-        # Format department field
-        formatted_department="${department//\"/}"
+{
+    id = $1
+    location_id = $2
+    name = format_name($3)
+    title = $4
+    email = ""
+    department = ""
 
-        # Write the updated line to the new CSV file
-        if [ -n "$id" ] && [ -n "$name" ]; then
-            echo "$id,$location_id,$formatted_name,$title,$email,$formatted_department" >> "$output_file"
-        fi
-    fi
-done < <(tail -n +2 "$input_file")
+    for (i=5; i<=NF; i++) {
+        if ($i ~ /@/) {
+            email = $i
+            if (i < NF) department = $(i+1)
+            break
+        } else if (i == NF) {
+            department = $i
+        } else {
+            title = title "," $i
+        }
+    }
 
-# Remove the temporary file
+    gsub(/^"|"$/, "", title)  # Remove leading/trailing quotes from title
+    gsub(/^"|"$/, "", email)  # Remove leading/trailing quotes from email
+    gsub(/^"|"$/, "", department)  # Remove leading/trailing quotes from department
+
+    # Generate email based on existing email or add location_id if needed
+    if (email ~ /@abc\.com$/) {
+        email = generate_email(name, location_id)
+    } else {
+        email = generate_email(name, location_id)
+    }
+
+    if (title ~ /,$/) {
+        gsub(/,$/, "", title)  # Remove trailing comma from title
+    }
+
+    if (title ~ /,/) {
+        title = "\"" title "\""  # Enclose title with quotes if it contains commas
+    }
+
+    gsub(/""+/, "\"", title)  # Remove duplicate quotes from title
+
+    print id, location_id, name, title, email, department
+}
+' "$input_file" > "$temp_file"
+
+# Append the processed data to the output file
+cat "$temp_file" >> "$output_file"
+
+# Clean up temporary files
 rm "$temp_file"
 
 echo "New CSV file created: $output_file"

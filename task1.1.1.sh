@@ -92,4 +92,4 @@ cat "$temp_file" >> "$output_file"
 # Clean up temporary files
 rm "$temp_file"
 
-echo "Done for test"
+echo "New CSV file created: $output_file"

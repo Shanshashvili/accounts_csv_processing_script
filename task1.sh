@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "Start of the process"
+
 # Check if an argument is provided for the input file
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 path/to/accounts.csv"
@@ -111,3 +113,4 @@ cat "$temp_file" >> "$output_file"
 rm "$temp_file"
 
 echo "New CSV file created: $output_file"
+echo "End of the process"

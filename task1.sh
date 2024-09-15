@@ -82,8 +82,8 @@ awk '
         # Update the name field with the formatted name
         $3 = formatted_name
 
-        # Print the updated row
-        print
+        # Print the updated row, including the department field unchanged
+        print $1, $2, $3, $4, $5, $6
     }
 ' "$file" "$file" > "$output_file"
 

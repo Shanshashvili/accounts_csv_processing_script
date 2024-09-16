@@ -45,7 +45,7 @@ awk '
         email = tolower(substr(first_name, 1, 1) last_name)
 
         # Increment the counter for the email
-        email_count[email]++
+        email_count[email]++ 
         next
     }
 
@@ -62,9 +62,17 @@ awk '
         first_name = name[1]
         last_name = name[length(name)]
 
-        # Format name: first letter uppercase, rest lowercase
+        # Format name: first letter uppercase, rest lowercase for each part of the name
         for (i = 1; i <= length(name); i++) {
-            name[i] = toupper(substr(name[i], 1, 1)) tolower(substr(name[i], 2))
+            # Check if the part of the name contains a hyphen
+            if (index(name[i], "-") > 0) {
+                # Split by hyphen and capitalize both parts
+                split(name[i], hyphenated, "-")
+                name[i] = toupper(substr(hyphenated[1], 1, 1)) tolower(substr(hyphenated[1], 2)) "-" \
+                          toupper(substr(hyphenated[2], 1, 1)) tolower(substr(hyphenated[2], 2))
+            } else {
+                name[i] = toupper(substr(name[i], 1, 1)) tolower(substr(name[i], 2))
+            }
         }
         formatted_name = name[1] " " name[length(name)]
 
@@ -88,5 +96,4 @@ awk '
 ' "$file" "$file" > "$output_file"
 
 echo "CSV processing complete."
-
 echo "New CSV file created at: $output_file"
